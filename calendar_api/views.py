@@ -1,9 +1,5 @@
-import code
 from django.http import HttpResponseRedirect, JsonResponse
-from django.shortcuts import render
-from httplib2 import Credentials, Response
 from rest_framework.views import APIView
-import google.oauth2.credentials
 import google_auth_oauthlib.flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -11,16 +7,24 @@ import datetime
 import os.path
 
 class GoogleCalendarInitAPIView(APIView):
+    SCOPE = ['https://www.googleapis.com/auth/calendar.events.readonly']
+    REDIRECT_URI = 'http://localhost:8000/rest/v1/calendar/redirect'
+    STATE = 'iamBatman'
 
     def get(self, request):
+        """
+        GET THE AUTHORIZATION URL FOR LOGGING IN ACCOUNT AND PROVIDING CONSENT
+        REDIRECTS TO: GoogleCalendarRedirectAPIView
+        """
+        
         if os.path.exists('client_secret.json'):
             flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
                 'client_secret.json',
-                scopes=['https://www.googleapis.com/auth/calendar.events.readonly'],
-                state="iamBatman"
+                scopes = self.SCOPE,
+                state = self.STATE
                 )
             
-            flow.redirect_uri = 'http://localhost:8000/rest/v1/calendar/redirect'
+            flow.redirect_uri = self.REDIRECT_URI
 
             authorization_url, state = flow.authorization_url(
                 access_type='offline',
@@ -30,28 +34,42 @@ class GoogleCalendarInitAPIView(APIView):
         else:
             return JsonResponse({"Message":"Service Not Enabled"})
 
+
+
 class GoogleCalendarRedirectAPIView(APIView):
+    SCOPE = ['https://www.googleapis.com/auth/calendar.events.readonly']
+    REDIRECT_URI = 'http://localhost:8000/rest/v1/calendar/redirect'
+    STATE = 'Iambatman'
 
     def get(self, request):
+        """
+        GET: AUTHORIZATION_CODE OR ERROR
+        EXTRACT: ACCESS_TOKEN
+        INVOKE THE DESIRED GOOGLE API 
+        """
         try:
             auth_code = request.GET.get('code')
             if not auth_code:
                 raise Exception("Auth Code NOT Found!")
+
+            flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
+            'client_secret.json',
+            scopes=self.SCOPE,
+            state=self.STATE
+            )
+
+            flow.redirect_uri = self.REDIRECT_URI
+            flow.fetch_token(code=auth_code)
+            credentials = flow.credentials
+            if not credentials:
+                raise Exception("Access Token NOT Found!")
+            # print(credentials.token)
+
         except Exception as e:
             return JsonResponse({"Message":e})
 
-        flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
-            'client_secret.json',
-            scopes=['https://www.googleapis.com/auth/calendar.events.readonly'],
-            state="iamBatman"
-            )
-        flow.redirect_uri = "http://localhost:8000/rest/v1/calendar/redirect"
-        flow.fetch_token(code=auth_code)
-        credentials = flow.credentials
-        # print(credentials.token)
 
-
-
+        #  GET THE CALENDAR SERVICE AND INVOKE API ENDPOINTS IN SCOPE
         try:
             service = build('calendar', 'v3', credentials=credentials)
 
@@ -64,18 +82,16 @@ class GoogleCalendarRedirectAPIView(APIView):
             events = events_result.get('items', [])
 
             if not events:
-                print('No upcoming events found.')
-                return
+                return JsonResponse({"Message":"No Upcoming Events"})
 
             # Prints the start and name of the next 10 events
             for event in events:
                 start = event['start'].get('dateTime', event['start'].get('date'))
                 print(start, event['summary'])
+            return JsonResponse({"Message":"Successful"})
 
         except HttpError as error:
-            print('An error occurred: %s' % error)
-        
-        return JsonResponse({"Message":"Successful"})
+            return JsonResponse({"Message":error})
 
 
 

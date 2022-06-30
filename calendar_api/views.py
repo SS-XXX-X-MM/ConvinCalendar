@@ -1,4 +1,6 @@
+from django.http import HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
+from httplib2 import Response
 from rest_framework.views import APIView
 import google.oauth2.credentials
 import google_auth_oauthlib.flow
@@ -6,7 +8,7 @@ import google_auth_oauthlib.flow
 
 class GoogleCalendarInitAPIView(APIView):
 
-    def post(self, request):
+    def get(self, request):
         flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
             'client_secret.json',
             scopes=['https://www.googleapis.com/auth/calendar.events.readonly']
@@ -19,10 +21,19 @@ class GoogleCalendarInitAPIView(APIView):
             include_granted_scopes='true')
 
         print(authorization_url)
+        return HttpResponseRedirect(redirect_to=authorization_url)
 
 class GoogleCalendarRedirectAPIView(APIView):
 
     def get(self, request):
-        pass
+        try:
+            auth_code = request.GET.get('code')
+            if not auth_code:
+                raise Exception("Auth Code NOT Found!")
+        except Exception as e:
+            print(e)
+        
+        
+        return JsonResponse({"Message":"Successful"})
 
 
